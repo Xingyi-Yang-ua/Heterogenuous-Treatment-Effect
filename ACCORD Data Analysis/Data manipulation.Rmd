@@ -1,0 +1,202 @@
+---
+title: "Data_manipulation"
+author: "Xingyi"
+date: "3/29/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(sas7bdat)
+library(haven)
+library(tidyverse)
+library(dplyr)
+```
+
+## Load dataset_Primary predictors
+```{r}
+datasets_folder <- "/Users/xingyiyang/Documents/imdependet study/Data/Main_Study/Main_Study/3-Data_Sets-Analysis/3a-Analysis_Data_Sets/"
+
+activitystatus <- haven::read_sas(paste(datasets_folder, 
+                  "activitystatus.sas7bdat", sep = ""))
+
+hypoglycemiaevents <- haven::read_sas(paste(datasets_folder,
+                      "hypoglycemiaevents.sas7bdat", sep = ""))
+
+hba1c <- haven::read_sas(paste(datasets_folder,
+         "hba1c.sas7bdat", sep = ""))
+
+otherlabs <- haven::read_sas(paste(datasets_folder,
+             "otherlabs.sas7bdat", sep = ""))
+
+bloodpressure <- haven::read_sas(paste(datasets_folder,
+                 "bloodpressure.sas7bdat", sep = ""))
+
+accord_key <- 
+  haven::read_sas(paste(datasets_folder,"accord_key.sas7bdat",sep = "")) %>% 
+  mutate(glycemic_arm = ifelse(arm==1|arm==2|arm==5|arm==6,0,1),
+         bp_arm = ifelse(arm==3 | arm ==1,1,0),
+         lipid_arm = ifelse(arm==7 | arm == 5,1,0))
+
+microvascularoutcomes <- haven::read_sas(paste(datasets_folder,"microvascularoutcomes.sas7bdat",sep=""))
+
+cvdoutcomes <- haven::read_sas(paste(datasets_folder,"cvdoutcomes.sas7bdat",sep = "")) 
+
+hypoglycemiatime1st <- haven::read_sas(paste(datasets_folder,"hypoglycemiatime1st.sas7bdat",sep = ""))
+
+bloodpressure <- haven::read_sas(paste(datasets_folder,"bloodpressure.sas7bdat",sep=""))
+
+hba1c <- haven::read_sas(paste(datasets_folder,"hba1c.sas7bdat",sep = "")) 
+
+heart_rate <- haven::read_sas(paste(datasets_folder,"ecg.sas7bdat",sep=""))
+
+lipids <- haven::read_sas(paste(datasets_folder,"lipids.sas7bdat", sep=""))
+
+CRF_folder <- "/Users/xingyiyang/Documents/imdependet study/Data/Main_Study/Main_Study/4-Data_Sets-CRFs/4a-CRF_Data_Sets/"
+
+baseline_physical_exam <- haven::read_sas(paste(CRF_folder,"f07_baselinehistoryphysicalexam.sas7bdat",sep = "")) 
+
+f36_annualfollowupphysicalexam <- haven::read_sas(paste(CRF_folder,"f36_annualfollowupphysicalexam.sas7bdat",sep = "")) 
+
+f29_champsphysicalactivity <- haven::read_sas(paste(CRF_folder,"f29_champsphysicalactivity.sas7bdat",sep = "")) 
+
+f26_dietquestionnaire <- haven::read_sas(paste(CRF_folder,"f26_dietquestionnaire.sas7bdat",sep = "")) 
+
+inclusionexclusionsummary <- haven::read_sas(paste(CRF_folder,"f01_inclusionexclusionsummary.sas7bdat",sep = ""))
+
+f08_09_glycemiamanagement <- haven::read_sas(paste(CRF_folder,"f08_09_glycemiamanagement.sas7bdat",sep = ""))
+
+healthutilitiesindex <- haven::read_sas(paste(CRF_folder,"f19_healthutilitiesindex.sas7bdat",sep = ""))
+
+```
+
+## Joint accord_key, and other predictors
+```{r}
+accord_basic <- accord_key %>% select(MaskID, female, baseline_age, glycemic_arm, cvd_hx_baseline)
+
+## cvdout <- cvdoutcomes %>% select(MaskID, censor_po, fuyrs_po) %>%
+##mutate(fumonth_po = fuyrs_po *12) %>% select(MaskID, censor_po, fumonth_po)
+
+blood_pressure_base <- bloodpressure %>% dplyr::filter(Visit=="BLR")
+
+heart_rt_base <- heart_rate %>% select(MaskID, Visit, heart_rt) %>% dplyr::filter(Visit=="BLR")
+
+hba1c_change <- hba1c %>% group_by(MaskID) %>% summarise(change_hba1c = first(hba1c) -  last(hba1c))
+
+inclusionexclusion_base <- inclusionexclusionsummary %>% select(MaskID, x2mi, x2stroke, x2angina, cabg, ptci, cvdhist, x3malb, x4llmeds, x4bpmeds, x4smoke, x4bmi)
+#summary(inclusionexclusion_base)
+
+physical_exam_base <- baseline_physical_exam %>% select(MaskID, edu, yrsdiab, ulcer, protein, hartfail, neuropat, depressn, eyedisea, alcohol, wt_kg, ht_cm, scrright, scrleft, eyesurg, retpathy, hfrswell, feeling, ffilam, famphis)
+sum(is.na(physical_exam_base$famphis)) # 78 missing values
+sum(is.na(physical_exam_base$retpathy)) # 1282 missing values
+
+physical_exam_base$retpathy[is.na(physical_exam_base$retpathy)] = 2
+physical_exam_base$famphis[is.na(physical_exam_base$famphis)] = 2
+physical_exam_base$hfrswell[is.na(physical_exam_base$hfrswell)] = 2
+
+glycemia_management_base <- f08_09_glycemiamanagement %>% dplyr::filter(Visit=="BLR") %>% select(MaskID, g1check, g2anyins, g17days)
+glycemia_management_base$hypo7d <- as.numeric(glycemia_management_base$g17days > 0)
+
+
+lipid_base <- lipids %>% dplyr::filter(Visit=="BLR") %>% mutate(hdltot = hdl/chol)
+
+otherlabs_base <- otherlabs %>% dplyr::filter(Visit=="BLR")
+
+
+health_utilities_index_base <- healthutilitiesindex %>% dplyr::filter(Visit=="BLR")
+
+
+df_primary <- accord_basic %>%
+  left_join(hba1c_change, by ="MaskID") %>%
+  left_join(blood_pressure_base, by = "MaskID") %>%
+  left_join(inclusionexclusion_base,by = "MaskID") %>%
+  left_join(physical_exam_base, by = "MaskID") %>%
+  left_join(glycemia_management_base, by = "MaskID") %>%
+  left_join(health_utilities_index_base, by = "MaskID") %>%
+  left_join(otherlabs_base, by = "MaskID") %>%
+  left_join(lipid_base, by = "MaskID") %>%
+  select(-Visit.x, -Visit.y, -Visit.x.x, -Visit.y.y)
+
+glimpse(df_primary)
+
+df_primary$x2mi = 1-(df_primary$x2mi-1)
+df_primary$x2stroke = 1-(df_primary$x2stroke-1)
+df_primary$x2angina = 1-(df_primary$x2angina-1)
+df_primary$cabg = 1-(df_primary$cabg-1)
+df_primary$ptci = 1-(df_primary$ptci-1)
+df_primary$cvdhist = 1-(df_primary$cvdhist-1)
+df_primary$x3malb <- as.numeric(df_primary$x3malb == 1)
+df_primary$x4llmeds <- as.numeric(df_primary$x4llmeds == 1)
+df_primary$x4bpmeds <- as.numeric(df_primary$x4bpmeds == 1)
+df_primary$x4smoke <- as.numeric(df_primary$x4smoke == 1)
+df_primary$x4bmi <- as.numeric(df_primary$x4bmi == 1)
+df_primary$ulcer <- as.numeric(df_primary$ulcer == 1)
+df_primary$protein <- as.numeric(df_primary$protein == 1)
+df_primary$hartfail <- as.numeric(df_primary$hartfail == 1)
+df_primary$neuropat <- as.numeric(df_primary$neuropat == 1)
+df_primary$depressn <- as.numeric(df_primary$depressn == 1)
+df_primary$eyedisea <- as.numeric(df_primary$eyedisea == 1)
+df_primary$x4s <- as.numeric(df_primary$eyedisea == 1)
+df_primary$eyesurg <- as.numeric(df_primary$eyesurg == 1)
+df_primary$retpathy <- as.numeric(df_primary$retpathy == 1)
+df_primary$hfrswell <- as.numeric(df_primary$hfrswell == 1)
+df_primary$famphis <- as.numeric(df_primary$famphis == 1)
+df_primary$g2anyins <- as.numeric(df_primary$g2anyins == 1)
+
+summary(df_primary)
+
+df_primary_6291 <- df_primary %>% dplyr::filter(MaskID %in% id)
+glimpse(df_primary_6291)
+
+```
+
+## Read SNP data and combine it with primary predictors
+```{r}
+time_read_genio <- system.time(
+  snp <- BEDMatrix("/Users/xingyiyang/Documents/imdependet study/Data/Julia/filtered_accord_merged_unc_may")
+)
+
+rownames <- row.names(snp)
+rownames[1:10]
+colnames <- colnames(snp)
+id <- str_sub(rownames, 1, 6)
+id <- as.integer(id)
+rownames(snp) <- id
+
+df_final <- df_primary
+
+##-----------Combine the covariates and snp data------------------------------##
+df_primary_final <- df_final %>% dplyr::filter(MaskID %in% id) 
+glimpse(df_primary_final)
+
+all.equal(as.numeric(rownames(snp)), df_primary_final$MaskID)
+
+df_snp_final <- cbind(df_primary_final, as.matrix(snp))
+write.table(df_snp_final,file="df_snp_final_ha1c.csv")
+save(df_snp_final, file="df_snp_final.Rda")
+```
+## Data clean
+```{r}
+
+table(df_snp_final$glycemic_arm)
+tapply(df_snp_final$change_hba1c, df_snp_final$glycemic_arm, summary)
+
+# Split the dataset
+df_snp_ct <- df_snp_final %>% select(-MaskID)
+
+predictor_names_snp <- names(df_snp_ct)
+predictor_names_snp <- str_replace_all(predictor_names_snp, "-", "_")
+sum(str_detect(predictor_names_snp, "-"))
+
+colnames(df_snp_ct) <- predictor_names_snp
+
+predictor_names_snp_var <- predictor_names_snp[-c(3,5)]
+
+train_fraction <- 0.8  # Use train_fraction % of the dataset to train our models
+n <- dim(df_snp_ct)[1]
+train_idx <- sample.int(n, replace=F, size=floor(n*train_fraction))
+df_train_snp <- df_snp_ct[train_idx,]
+df_test_snp <- df_snp_ct[-train_idx,]
+```
+
+
